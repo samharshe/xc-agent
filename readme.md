@@ -14,4 +14,4 @@ there are two handlers of interest in the current version. in `aos`, handlers ar
 - `Plea`, the user's request to King Lear, which will be granted only if `Llama` finds it "exceptionally obseqious and fawning."
 
 ### other functionality.
-of course, this set-up can easily be remixed to create much more powerful agents. all the agent functionality is provided at the end of the file. I will not explain how this all works here, instead trusting that the Lua is readable enough as-is. I'm excited to move immediately to building out a genuine API and robust tooling instead of spend too much ink on how the current demo is stitched together.
+of course, this set-up can easily be remixed to create much more powerful agents. all the agent functionality is provided at the end of the file, but I will not explain how this all works here, instead hoping that the Lua is readable enough as-is and moving immediately to building out a genuine API and robust tooling.
