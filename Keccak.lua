@@ -38,7 +38,6 @@ local rotationOffsets = {
     {27, 20, 39, 8, 14}
 }
 
--- the full permutation function
 local function keccakF(st)
 	local permuted = st.permuted
 	local parities = st.parities
@@ -49,13 +48,7 @@ local function keccakF(st)
 			local sx = st[x]
 			for y = 1,5 do parities[x] = parities[x] ~ sx[y] end
 		end
-		--
-		-- unroll the following loop
-		--for x = 1,5 do
-		--	local p5 = parities[(x)%5 + 1]
-		--	local flip = parities[(x-2)%5 + 1] ~ ( p5 << 1 | p5 >> 63)
-		--	for y = 1,5 do st[x][y] = st[x][y] ~ flip end
-		--end
+
 		local p5, flip, s
 		--x=1
 		p5 = parities[2]
@@ -92,14 +85,6 @@ local function keccakF(st)
 				py[(2*x + 3*y)%5 + 1] = (s << r | s >> (64-r))
 			end
 		end
-
-		-- chi() - unroll the loop
-		--for x = 1,5 do
-		--	for y = 1,5 do
-		--		local combined = (~ permuted[(x)%5 +1][y]) & permuted[(x+1)%5 +1][y]
-		--		st[x][y] = permuted[x][y] ~ combined
-		--	end
-		--end
 
 		local p, p1, p2
 		--x=1
@@ -139,10 +124,7 @@ local function absorb(st, inBuffer)
 	local blockBytes = st.rate / 8
 	local blockWords = blockBytes / 8
 
-	-- append 0x01 byte and pad with zeros to block size (rate/8 bytes)
 	local totalBytes = #hexBuffer + 1
-	-- for keccak (2012 submission), the padding is byte 0x01 followed by zeros
-	-- for SHA3 (NIST, 2015), the padding is byte 0x06 followed by zeros
 
 	hexBuffer = hexBuffer .. ( '\x01' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
 
@@ -154,6 +136,7 @@ local function absorb(st, inBuffer)
     end
 
 	local totalWords = #words
+
 	-- OR final word with 0x80000000 to set last bit of state to 1
 	-- TODO: there's a 1/1088 chance this fails. unfortunately, this must be redone.
 	words[totalWords] = words[totalWords] | 0x8000000000000000
@@ -174,13 +157,9 @@ local function absorb(st, inBuffer)
 	end
 end
 
--- returns [rate] bits from the state, without permuting afterward.
--- Only for use when the state will immediately be thrown away,
--- and not used for more output later
 local function squeeze(st)
 	local blockBytes = st.rate / 8
 	local blockWords = blockBytes / 4
-	-- fetch blocks out of state
 	local hasht = {}
 	local offset = 1
 	for y = 1, 5 do
@@ -194,7 +173,6 @@ local function squeeze(st)
 	return table.concat(hasht)
 end
 
--- primitive functions (assume rate is a whole multiple of 64 and length is a whole multiple of 8)
 local function keccakHash(data)
 	local state = {	{0,0,0,0,0},
 					{0,0,0,0,0},
