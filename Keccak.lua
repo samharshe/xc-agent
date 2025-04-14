@@ -30,7 +30,7 @@ local ROUND_CONSTANTS = {
 }
 
 local ROTATION_OFFSETS = {
-    -- ordered for [x][y] dereferencing, so appear flipped here:
+    -- ordered for [x][y] dereferencing, so appear flipped here
     {0, 36, 3, 41, 18},
     {1, 44, 10, 45, 2},
     {62, 6, 43, 15, 61},
@@ -42,7 +42,7 @@ local function keccakF(st)
 	local permuted = st.permuted
 	local parities = st.parities
 	for round = 1, N_ROUNDS do
-		-- theta()
+		-- theta
 		for x = 1,5 do
 			parities[x] = 0
 			local sx = st[x]
@@ -76,7 +76,7 @@ local function keccakF(st)
 		s = st[5]
 		for y = 1,5 do s[y] = s[y] ~ flip end
 
-		-- rhopi()
+		-- rho, pi
 		for y = 1,5 do
 			local py = permuted[y]
 			local r
