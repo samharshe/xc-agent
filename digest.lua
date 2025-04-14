@@ -124,29 +124,39 @@ local function keccakF(st)
 end
 
 
-local function absorb(st, buffer, algorithm)
+local function absorb(st, inBuffer, algorithm)
+
+    local hexBuffer = ""
+    for i = 1, #inBuffer, 2 do
+        local hex = inBuffer:sub(i, i+1)
+        local success, result = pcall(function() return tonumber(hex, 16) end)
+        if not success then
+            error("Invalid hex value: " .. hex)
+        end
+        hexBuffer = hexBuffer .. string.char(result)
+    end
 
 	local blockBytes = st.rate / 8
 	local blockWords = blockBytes / 8
 
 	-- append 0x01 byte and pad with zeros to block size (rate/8 bytes)
-	local totalBytes = #buffer + 1
+	local totalBytes = #hexBuffer + 1
 	-- for keccak (2012 submission), the padding is byte 0x01 followed by zeros
 	-- for SHA3 (NIST, 2015), the padding is byte 0x06 followed by zeros
 
 	if algorithm == "keccak" then
-		buffer = buffer .. ( '\x01' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
+		hexBuffer = hexBuffer .. ( '\x01' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
 	end
 
 	if algorithm == "sha3" then
-		buffer = buffer .. ( '\x06' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
+		hexBuffer = hexBuffer .. ( '\x06' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
 	end
 
-	totalBytes = #buffer
+	totalBytes = #hexBuffer
 
     local words = {}
     for i = 1, totalBytes - (totalBytes % 8), 8 do
-        words[#words + 1] = string.unpack('<I8', buffer, i)
+        words[#words + 1] = string.unpack('<I8', hexBuffer, i)
     end
 
 	local totalWords = #words
