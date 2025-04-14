@@ -1,8 +1,8 @@
 local Hex = require("hex")
 
-local ROUNDS = 24
+local N_ROUNDS = 24
 
-local roundConstants = {
+local ROUND_CONSTANTS = {
     0x0000000000000001,
     0x0000000000008082,
     0x800000000000808A,
@@ -29,7 +29,7 @@ local roundConstants = {
     0x8000000080008008
 }
 
-local rotationOffsets = {
+local ROTATION_OFFSETS = {
     -- ordered for [x][y] dereferencing, so appear flipped here:
     {0, 36, 3, 41, 18},
     {1, 44, 10, 45, 2},
@@ -41,7 +41,7 @@ local rotationOffsets = {
 local function keccakF(st)
 	local permuted = st.permuted
 	local parities = st.parities
-	for round = 1, ROUNDS do
+	for round = 1, N_ROUNDS do
 		-- theta()
 		for x = 1,5 do
 			parities[x] = 0
@@ -81,7 +81,7 @@ local function keccakF(st)
 			local py = permuted[y]
 			local r
 			for x = 1,5 do
-				s, r = st[x][y], rotationOffsets[x][y]
+				s, r = st[x][y], ROTATION_OFFSETS[x][y]
 				py[(2*x + 3*y)%5 + 1] = (s << r | s >> (64-r))
 			end
 		end
@@ -104,7 +104,7 @@ local function keccakF(st)
 		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
 
 		-- iota()
-		st[1][1] = st[1][1] ~ roundConstants[round]
+		st[1][1] = st[1][1] ~ ROUND_CONSTANTS[round]
 	end
 end
 
