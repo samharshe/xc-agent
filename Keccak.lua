@@ -124,7 +124,7 @@ local function keccakF(st)
 end
 
 
-local function absorb(st, inBuffer, algorithm)
+local function absorb(st, inBuffer)
 
     local hexBuffer = ""
     for i = 1, #inBuffer, 2 do
@@ -144,13 +144,7 @@ local function absorb(st, inBuffer, algorithm)
 	-- for keccak (2012 submission), the padding is byte 0x01 followed by zeros
 	-- for SHA3 (NIST, 2015), the padding is byte 0x06 followed by zeros
 
-	if algorithm == "keccak" then
-		hexBuffer = hexBuffer .. ( '\x01' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
-	end
-
-	if algorithm == "sha3" then
-		hexBuffer = hexBuffer .. ( '\x06' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
-	end
+	hexBuffer = hexBuffer .. ( '\x01' .. string.char(0):rep(blockBytes - (totalBytes % blockBytes)))
 
 	totalBytes = #hexBuffer
 
@@ -201,42 +195,21 @@ local function squeeze(st)
 end
 
 -- primitive functions (assume rate is a whole multiple of 64 and length is a whole multiple of 8)
-local function keccakHash(rate, length, data, algorithm)
+local function keccakHash(data)
 	local state = {	{0,0,0,0,0},
 					{0,0,0,0,0},
 					{0,0,0,0,0},
 					{0,0,0,0,0},
 					{0,0,0,0,0},
 	}
-	state.rate = rate
-	-- these are allocated once, and reused
+	state.rate = 1088
+	local length = 256
 	state.permuted = { {}, {}, {}, {}, {}, }
 	state.parities = {0,0,0,0,0}
-	absorb(state, data, algorithm)
+	absorb(state, data)
 	local encoded = squeeze(state):sub(1,length/8);
 
-	local public = {}
-
-	public.asString = function()
-		return encoded
-	end
-
-	public.asHex = function()
-		return Hex.stringToHex(encoded)
-	end
-
-	return public
+	return Hex.stringToHex(encoded)
 end
 
--- output tables for getting the hash as bytes, string, or hex
-local function sha3_256(data) return keccakHash(1088, 256, data, 'sha3') end
-local function sha3_512(data) return keccakHash(576, 512, data, 'sha3') end
-local function keccak256(data) return keccakHash(1088, 256, data, 'keccak') end
-local function keccak512(data) return keccakHash(576, 512, data, 'keccak') end
-
-return {
-	sha3_256 = sha3_256,
-	sha3_512 = sha3_512,
-	keccak256 = keccak256,
-	keccak512 = keccak512
-}
+return keccakHash

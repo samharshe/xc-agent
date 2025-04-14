@@ -1,9 +1,5 @@
 local bint = require('bint')(4096) -- for secp256k1
-local keccak = require('Keccak').keccak256
-
-function kec(data)
-    return tostring(keccak(data).asHex())
-end
+local keccak = require('Keccak')
 
 -- doing what we can for public safety in Lua
 function AssertWord(word)
@@ -470,7 +466,7 @@ function GeneratePrivateKey()
 
     local result = table.concat(privateKeyTable)
 
-    result = kec(result)
+    result = keccak(result)
 
     return result
 end
@@ -642,7 +638,7 @@ local function MakeCredentials() -- all in one for an ethereum wallet
     local x, y = table.unpack(publicCurvePoint)
     publicCurvePoint = {x % algorithm.p, y % algorithm.p}
     local publicKey = LeftPad(DecimalToHex(tostring(publicCurvePoint[1])), 64).. LeftPad(DecimalToHex(tostring(publicCurvePoint[2])), 64)
-    local address = string.sub(kec(publicKey), -40)
+    local address = string.sub(keccak(publicKey), -40)
 
     return privateKey, publicKey, address
 end
@@ -657,7 +653,7 @@ local function SignMessage(privateKey, hash)
     local yParity = ""
     while r:eq(0) or s:eq(0) do
         ::continue::
-        local k = bint.fromstring('0x' .. kec(hash))
+        local k = bint.fromstring('0x' .. keccak(hash))
         k = k % algorithm.n -- 2^256 \mod algorithm.n \neq 0, so this is not a buttoned-up way to do it; to be reimplemented
 
         local curvePoint = ScalarCurveMultiply(algorithm, k, {algorithm.g_x, algorithm.g_y})
@@ -736,7 +732,7 @@ function SendEthereum(privateKey, nonce, destination)
     local privateKeybint = bint.fromstring('0x' .. privateKey)
 
     local encodedTransaction = RlpEncodeRawTransaction(nonce, destination, amount):lower()
-    local digest = kec(encodedTransaction)
+    local digest = keccak(encodedTransaction)
 
     local r, s, yParity = SignMessage(privateKeybint, digest)
     local r = LeftPad(DecimalToHex(tostring(r)), 64) -- we no longer need them as bints; `local` needed because we are changing type from `table`
@@ -764,17 +760,3 @@ function SendEthereum(privateKey, nonce, destination)
     ]]
     print(outString)
 end
-
-local privateKey = "dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf158462"
-
-print("NEW HASH TEST, GUTS RIPPED OUT.")
-SendEthereum(privateKey, tostring(0), privateKey)
-
--- 0:0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c001a0a049acdc861a99acb5e73732209bbd6c8af1ab090e6c114aaef53607f7c857d6a0410c0577751cf0060717f6b8a29e5ddcb76e8b5e0ea7fdeac2dd31cfbb37dd1b
--- 1:0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c080a0531c5f8ac72dc55df2719ac272e5afc14f18a43cf6711fa0c770656ab98ddc8ba05e1e344b87e30a345933711fa265ebbc268cee21dd637afaa9dddd252359a405
--- 2:0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c080a0531c5f8ac72dc55df2719ac272e5afc14f18a43cf6711fa0c770656ab98ddc8ba05e1e344b87e30a345933711fa265ebbc268cee21dd637afaa9dddd252359a405
--- 3:0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c001a0ff6a5bb644be3785618b5d1c6fa79196f7544be11a4443af86870b90b463a4d8a072c25ddcd91dc9495a95996e3bbd003ce0071f4d7196e1e4c8715a2ab74ebaa5
-
-0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c001a0ff6a5bb644be3785618b5d1c6fa79196f7544be11a4443af86870b90b463a4d8a072c25ddcd91dc9495a95996e3bbd003ce0071f4d7196e1e4c8715a2ab74ebaa5
-
-0x02f87f3b01808501dcd650008502cb41780082520894dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf15846286da475abf000080c001a0ff6a5bb644be3785618b5d1c6fa79196f7544be11a4443af86870b90b463a4d8a072c25ddcd91dc9495a95996e3bbd003ce0071f4d7196e1e4c8715a2ab74ebaa5
