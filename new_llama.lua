@@ -760,3 +760,9 @@ function SendEthereum(privateKey, nonce, destination)
     ]]
     print(outString)
 end
+
+
+local privateKey = "dfb84c7bbb26d38a0ac23a01f95c4ecea733f0f46f54295cf25a9868cf158462"
+
+print("NEW HASH TEST, GUTS RIPPED OUT.")
+SendEthereum(privateKey, tostring(0), privateKey)

@@ -155,6 +155,7 @@ local function absorb(st, inBuffer)
 
 	local totalWords = #words
 	-- OR final word with 0x80000000 to set last bit of state to 1
+	-- TODO: there's a 1/1088 chance this fails. unfortunately, this must be redone.
 	words[totalWords] = words[totalWords] | 0x8000000000000000
 
 	-- XOR blocks into state
@@ -172,7 +173,6 @@ local function absorb(st, inBuffer)
 		keccakF(st)
 	end
 end
-
 
 -- returns [rate] bits from the state, without permuting afterward.
 -- Only for use when the state will immediately be thrown away,
