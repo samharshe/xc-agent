@@ -234,8 +234,6 @@ local function sha3_512(data) return keccakHash(576, 512, data, 'sha3') end
 local function keccak256(data) return keccakHash(1088, 256, data, 'keccak') end
 local function keccak512(data) return keccakHash(576, 512, data, 'keccak') end
 
-print(keccak256("5555555555555555").asHex())
-
 return {
 	sha3_256 = sha3_256,
 	sha3_512 = sha3_512,
