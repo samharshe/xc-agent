@@ -424,7 +424,7 @@ function Keccak:chi()
 
         local not_next1 = BitwiseNot(next1)
         local and_part  = BitwiseAnd(not_next1, next2)
- 
+
         newState[x][y] = BitwiseXor(current, and_part)
       end
     end
