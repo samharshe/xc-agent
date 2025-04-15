@@ -86,6 +86,7 @@ local function keccakF(st)
 			end
 		end
 
+		-- chi
 		local p, p1, p2
 		--x=1
 		s, p, p1, p2 = st[1], permuted[1], permuted[2], permuted[3]
@@ -103,14 +104,13 @@ local function keccakF(st)
 		s, p, p1, p2 = st[5], permuted[5], permuted[1], permuted[2]
 		for y = 1,5 do s[y] = p[y] ~ (~ p1[y]) & p2[y] end
 
-		-- iota()
+		-- iota
 		st[1][1] = st[1][1] ~ ROUND_CONSTANTS[round]
 	end
 end
 
 
 local function absorb(st, inBuffer)
-
     local hexBuffer = ""
     for i = 1, #inBuffer, 2 do
         local hex = inBuffer:sub(i, i+1)
