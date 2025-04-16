@@ -1,12 +1,15 @@
+local secp256k1 = require('secp256k1')
 local bint = require('bint')(4096)
-local x = bint.fromstring("306890482018661345162541836146332667718")
-local y = bint.fromstring("306890482018661345162541836146332667718")
 
-local string_x = bint.tobase(x, 16, true)
-local string_y = bint.tobase(y, 16, true)
+local privateKeyHexString = "fe9239ef21ee6dac635793fcdd2a98564942a69247aa70760b076f572fd6d4fb"
+local privateKeyBint = bint.fromstring('0x' .. privateKeyHexString)
+local publicKeyCurvePoint = secp256k1.generatePublicKeyCurvePoint(privateKeyBint)
+local x, y = table.unpack(publicKeyCurvePoint)
+local hexStringX = bint.tobase(x, 16)
+local hexStringY = bint.tobase(y, 16)
+local publicKeyHexString = string.gsub(string.format("%32s", hexStringX), " ", "0") .. string.gsub(string.format("%32s", hexStringY), " ", "0")
 
-print(string_x)
-print(string_y)
-
-local publicKeyHexString = string.format("%32s", string_x):gsub(" ", "0") .. string.format("%32s", string_y):gsub(" ", "0")
-print(publicKeyHexString)
+print('privateKeyHexString: ' .. tostring(privateKeyHexString))
+print('hexStringX: ' .. hexStringX)
+print('hexStringY: ' .. hexStringY)
+print('publicKeyHexString: ' .. tostring(publicKeyHexString))

@@ -13,41 +13,27 @@ CURVE_CONSTANTS = {
     h = bint.fromstring("0x1")
 }
 
-function isPointOnCurve(point)
-    local x, y = table.unpack(point)
+-- local function isPointOnCurve(point)
+--     local x, y = table.unpack(point)
 
-    local val = (((y * y) - (x * x * x) - (CURVE_CONSTANTS.a * x) - CURVE_CONSTANTS.b) % CURVE_CONSTANTS.p) -- just the curve equation
-    return val == 0
-end
+--     -- simply check whether the point satisfies the curve equation
+--     return (((y * y) - (x * x * x) - (CURVE_CONSTANTS.a * x) - CURVE_CONSTANTS.b) % CURVE_CONSTANTS.p):eq(0)
+-- end
 
-function CurveNegate(algorithm, point)
-    if point == nil then
-        return nil
-    end
-
-    local x, y = table.unpack(point)
-    local newY = -y % CURVE_CONSTANTS.p
-    local newPoint = {x, newY}
-
-    assert(algorithm:isPointOnCurve(newPoint), 'error in calculation of negation of point.')
-
-    return newPoint
-end
-
-local function InverseMod(k, p)
-    if k == 0 then
+local function inverseMod(k, p)
+    if k:eq(0) then
         error('division by zero')
     end
 
     if k < 0 then
-        return p - InverseMod(-k, p)
+        return p - inverseMod(-k, p)
     end
 
     local s, old_s = 0, 1
     local t, old_t = 1, 0
     local r, old_r = p, k
 
-    while not r:eq(0) do
+    while not bint.eq(r, 0) do
         local quotient = old_r // r
         old_r, r = r, old_r - quotient * r
         old_s, s = s, old_s - quotient * s
@@ -55,61 +41,76 @@ local function InverseMod(k, p)
     end
 
     local gcd, x, y = old_r, old_s, old_t
+
     assert(gcd:eq(1))
     assert(((k * x) % p):eq(1))
 
     return (x % p)
 end
 
-local function CurveAdd(algorithm, point1, point2)
-    if point1 == nil then
-        return point2
+local function modulusFieldOrder(curvePoint)
+    local x, y = table.unpack(curvePoint)
+    x = x % CURVE_CONSTANTS.p
+    y = y % CURVE_CONSTANTS.p
+
+    return {x, y}
+end
+
+local function curveAdd(curvePoint1, curvePoint2)
+    if curvePoint1 == nil then
+        return curvePoint2
     end
-    if point2 == nil then
-        return point1
+    if curvePoint2 == nil then
+        return curvePoint1
     end
 
-    local x1, y1 = table.unpack(point1)
-    local x2, y2 = table.unpack(point2)
+    local x1, y1 = table.unpack(curvePoint1)
+    local x2, y2 = table.unpack(curvePoint2)
 
-    if x1:eq(x2) and not y1:eq(y2) then
-        return nil
-    end
-
-    local m
+    local m = nil
     if x1:eq(x2) then
-        m = (3 * x1 * x1 + algorithm.a) * InverseMod(2 * y1, algorithm.p)
+        if not y1:eq(y2) then
+            return nil
+        else
+            m = (3 * x1 * x1 + CURVE_CONSTANTS.a) * inverseMod(2 * y1, CURVE_CONSTANTS.p)
+        end
     else
-        m = (y1 - y2) * InverseMod(x1 - x2, algorithm.p)
+        m = (y1 - y2) * inverseMod(x1 - x2, CURVE_CONSTANTS.p)
     end
 
     local x3 = m * m - x1 - x2
     local y3 = y1 + m * (x3 - x1)
-    local result = {x3 % algorithm.p, -y3 % algorithm.p}
-    assert(algorithm:isPointOnCurve(result))
+    print('x3: ' .. tostring(x3))
+    print('y3: ' .. tostring(y3))
+    local result = modulusFieldOrder({x3, y3})
+    print(result[1])
+    print(result[2])
 
     return result
 end
 
-local function multiply(scalar, curvePoint)
+local function curveNegate(curvePoint)
+    local x, y = table.unpack(curvePoint)
+    return {x, -y}
+end
+
+local function curveMultiply(scalar, curvePoint)
     if scalar < 0 then
-        return multiply(-scalar, CurveNegate(curvePoint))
+        return curveMultiply(-scalar, curveNegate(curvePoint))
     end
 
     local result = nil
     local addend = curvePoint
 
-    -- double and add
-    scalar = tostring(scalar)
-    scalar = DecimalToBinary(scalar)
-    while scalar ~= "0" and scalar ~= "" do
-        if scalar:sub(-1) == "1" then
-            result = CurveAdd(result, addend)
+    -- double and add, taking advantage of bint operations
+    while not scalar:eq(0) do
+        if bint.isodd(scalar) then
+            result = curveAdd(result, addend)
         end
-
-        addend = CurveAdd(addend, addend)
-
-        scalar = scalar:sub(1, -2)
+        addend = curveAdd(addend, addend)
+        print(tostring(scalar))
+        print(bint.tobase(scalar, 2))
+        scalar = scalar >> 1
     end
 
     return result
@@ -117,22 +118,13 @@ end
 
 local function generatePublicKeyCurvePoint(privateKey)
     local publicKeyCurvePoint = nil
-    publicKeyCurvePoint = multiply(CURVE_CONSTANTS.g, privateKey)
-
-    local x, y = table.unpack(publicKeyCurvePoint)
-    publicKeyCurvePoint = {x % CURVE_CONSTANTS.p, y % CURVE_CONSTANTS.P}
+    publicKeyCurvePoint = curveMultiply(privateKey, CURVE_CONSTANTS.g)
 
     return publicKeyCurvePoint
 end
 
-local function modulusFieldOrder(curvePoint)
-    local x, y = table.unpack(curvePoint)
-
-    return {x % CURVE_CONSTANTS.p, y % CURVE_CONSTANTS.p}
-end
-
-
 return {
     generatePublicKeyCurvePoint = generatePublicKeyCurvePoint,
     modulusFieldOrder = modulusFieldOrder,
+    curveMultiply = curveMultiply
 }
