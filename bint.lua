@@ -1,101 +1,3 @@
---[[--
-lua-bint - v0.5.1 - 26/Jun/2023
-Eduardo Bart - edub4rt@gmail.com
-https://github.com/edubart/lua-bint
-
-Small portable arbitrary-precision integer arithmetic library in pure Lua for
-computing with large integers.
-
-Different from most arbitrary-precision integer libraries in pure Lua out there this one
-uses an array of lua integers as underlying data-type in its implementation instead of
-using strings or large tables, this make it efficient for working with fixed width integers
-and to make bitwise operations.
-
-## Design goals
-
-The main design goal of this library is to be small, correct, self contained and use few
-resources while retaining acceptable performance and feature completeness.
-
-The library is designed to follow recent Lua integer semantics, this means that
-integer overflow warps around,
-signed integers are implemented using two-complement arithmetic rules,
-integer division operations rounds towards minus infinity,
-any mixed operations with float numbers promotes the value to a float,
-and the usual division/power operation always promotes to floats.
-
-The library is designed to be possible to work with only unsigned integer arithmetic
-when using the proper methods.
-
-All the lua arithmetic operators (+, -, *, //, /, %) and bitwise operators (&, |, ~, <<, >>)
-are implemented as metamethods.
-
-The integer size must be fixed in advance and the library is designed to be more efficient when
-working with integers of sizes between 64-4096 bits. If you need to work with really huge numbers
-without size restrictions then use another library. This choice has been made to have more efficiency
-in that specific size range.
-
-## Usage
-
-First on you should require the bint file including how many bits the bint module will work with,
-by calling the returned function from the require, for example:
-
-```lua
-local bint = require 'bint'(1024)
-```
-
-For more information about its arguments see @{newmodule}.
-Then when you need create a bint, you can use one of the following functions:
-
-* @{bint.fromuinteger} (convert from lua integers, but read as unsigned integer)
-* @{bint.frominteger} (convert from lua integers, preserving the sign)
-* @{bint.frombase} (convert from arbitrary bases, like hexadecimal)
-* @{bint.fromstring} (convert from arbitrary string, support binary/hexadecimal/decimal)
-* @{bint.trunc} (convert from lua numbers, truncating the fractional part)
-* @{bint.new} (convert from anything, asserts on invalid integers)
-* @{bint.tobint} (convert from anything, returns nil on invalid integers)
-* @{bint.parse} (convert from anything, returns a lua number as fallback)
-* @{bint.zero}
-* @{bint.one}
-* `bint`
-
-You can also call `bint` as it is an alias to `bint.new`.
-In doubt use @{bint.new} to create a new bint.
-
-Then you can use all the usual lua numeric operations on it,
-all the arithmetic metamethods are implemented.
-When you are done computing and need to get the result,
-get the output from one of the following functions:
-
-* @{bint.touinteger} (convert to a lua integer, wraps around as an unsigned integer)
-* @{bint.tointeger} (convert to a lua integer, wraps around, preserves the sign)
-* @{bint.tonumber} (convert to lua float, losing precision)
-* @{bint.tobase} (convert to a string in any base)
-* @{bint.__tostring} (convert to a string in base 10)
-
-To output a very large integer with no loss you probably want to use @{bint.tobase}
-or call `tostring` to get a string representation.
-
-## Precautions
-
-All library functions can be mixed with lua numbers,
-this makes easy to mix operations between bints and lua numbers,
-however the user should take care in some situations:
-
-* Don't mix integers and float operations if you want to work with integers only.
-* Don't use the regular equal operator ('==') to compare values from this library,
-unless you know in advance that both values are of the same primitive type,
-otherwise it will always return false, use @{bint.eq} to be safe.
-* Don't pass fractional numbers to functions that an integer is expected
-* Don't mix operations between bint classes with different sizes as this is not supported, this
-will throw assertions.
-* Remember that casting back to lua integers or numbers precision can be lost.
-* For dividing while preserving integers use the @{bint.__idiv} (the '//' operator).
-* For doing power operation preserving integers use the @{bint.ipow} function.
-* Configure the proper integer size you intend to work with, otherwise large integers may wrap around.
-
-]]
-
--- Returns number of bits of the internal lua integer type.
 local function luainteger_bitsize()
   local n, i = -1, 0
   repeat
@@ -120,40 +22,28 @@ local table_unpack = table.unpack
 
 local memo = {}
 
---- Create a new bint module representing integers of the desired bit size.
--- This is the returned function when `require 'bint'` is called.
--- @function newmodule
--- @param bits Number of bits for the integer representation, must be multiple of wordbits and
--- at least 64.
--- @param[opt] wordbits Number of the bits for the internal word,
--- defaults to half of Lua's integer size.
 local function newmodule(bits, wordbits)
 
 local intbits = luainteger_bitsize()
 bits = bits or 256
 wordbits = wordbits or (intbits // 2)
 
--- Memoize bint modules
 local memoindex = bits * 64 + wordbits
 if memo[memoindex] then
   return memo[memoindex]
 end
 
--- Validate
 assert(bits % wordbits == 0, 'bitsize is not multiple of word bitsize')
 assert(2*wordbits <= intbits, 'word bitsize must be half of the lua integer bitsize')
 assert(bits >= 64, 'bitsize must be >= 64')
 assert(wordbits >= 8, 'wordbits must be at least 8')
 assert(bits % 8 == 0, 'bitsize must be multiple of 8')
 
--- Create bint module
 local bint = {}
 bint.__index = bint
 
---- Number of bits representing a bint instance.
 bint.bits = bits
 
--- Constants used internally
 local BINT_BITS = bits
 local BINT_BYTES = bits // 8
 local BINT_WORDBITS = wordbits
@@ -164,7 +54,6 @@ local BINT_LEPACKFMT = '<'..('I'..(wordbits // 8)):rep(BINT_SIZE)
 local BINT_MATHMININTEGER, BINT_MATHMAXINTEGER
 local BINT_MININTEGER
 
---- Create a new bint with 0 value.
 function bint.zero()
   local x = setmetatable({}, bint)
   for i=1,BINT_SIZE do
@@ -174,7 +63,6 @@ function bint.zero()
 end
 local bint_zero = bint.zero
 
---- Create a new bint with 1 value.
 function bint.one()
   local x = setmetatable({}, bint)
   x[1] = 1
@@ -185,7 +73,6 @@ function bint.one()
 end
 local bint_one = bint.one
 
--- Convert a value to a lua integer without losing precision.
 local function tointeger(x)
   x = tonumber(x)
   local ty = math_type(x)
@@ -201,11 +88,6 @@ local function tointeger(x)
   end
 end
 
---- Create a bint from an unsigned integer.
--- Treats signed integers as an unsigned integer.
--- @param x A value to initialize from convertible to a lua integer.
--- @return A new bint or nil in case the input cannot be represented by an integer.
--- @see bint.frominteger
 function bint.fromuinteger(x)
   x = tointeger(x)
   if x then
@@ -224,10 +106,6 @@ function bint.fromuinteger(x)
 end
 local bint_fromuinteger = bint.fromuinteger
 
---- Create a bint from a signed integer.
--- @param x A value to initialize from convertible to a lua integer.
--- @return A new bint or nil in case the input cannot be represented by an integer.
--- @see bint.fromuinteger
 function bint.frominteger(x)
   x = tointeger(x)
   if x then
@@ -256,7 +134,6 @@ local bint_frominteger = bint.frominteger
 
 local basesteps = {}
 
--- Compute the read step for frombase function
 local function getbasestep(base)
   local step = basesteps[base]
   if step then
@@ -273,39 +150,29 @@ local function getbasestep(base)
   return step
 end
 
--- Compute power with lua integers.
 local function ipow(y, x, n)
   if n == 1 then
     return y * x
-  elseif n & 1 == 0 then --even
+  elseif n & 1 == 0 then
     return ipow(y, x * x, n // 2)
   end
   return ipow(x * y, x * x, (n-1) // 2)
 end
 
---- Create a bint from a string of the desired base.
--- @param s The string to be converted from,
--- must have only alphanumeric and '+-' characters.
--- @param[opt] base Base that the number is represented, defaults to 10.
--- Must be at least 2 and at most 36.
--- @return A new bint or nil in case the conversion failed.
 function bint.frombase(s, base)
   if type(s) ~= 'string' then
     return
   end
   base = base or 10
   if not (base >= 2 and base <= 36) then
-    -- number base is too large
     return
   end
   local step = getbasestep(base)
   if #s < step then
-    -- string is small, use tonumber (faster)
     return bint_frominteger(tonumber(s, base))
   end
   local sign, int = s:lower():match('^([+-]?)(%w+)$')
   if not (sign and int) then
-    -- invalid integer string representation
     return
   end
   local n = bint_zero()
@@ -313,7 +180,6 @@ function bint.frombase(s, base)
     local part = int:sub(i,i+step-1)
     local d = tonumber(part, base)
     if not d then
-      -- invalid integer string representation
       return
     end
     if i > 1 then
@@ -330,11 +196,6 @@ function bint.frombase(s, base)
 end
 local bint_frombase = bint.frombase
 
---- Create a new bint from a string.
--- The string can by a decimal number, binary number prefixed with '0b' or hexadecimal number prefixed with '0x'.
--- @param s A string convertible to a bint.
--- @return A new bint or nil in case the conversion failed.
--- @see bint.frombase
 function bint.fromstring(s)
   if type(s) ~= 'string' then
     return
@@ -349,40 +210,26 @@ function bint.fromstring(s)
 end
 local bint_fromstring = bint.fromstring
 
---- Create a new bint from a buffer of little-endian bytes.
--- @param buffer Buffer of bytes, extra bytes are trimmed from the right, missing bytes are padded to the right.
--- @raise An assert is thrown in case buffer is not an string.
--- @return A bint.
 function bint.fromle(buffer)
   assert(type(buffer) == 'string', 'buffer is not a string')
-  if #buffer > BINT_BYTES then -- trim extra bytes from the right
+  if #buffer > BINT_BYTES then
     buffer = buffer:sub(1, BINT_BYTES)
-  elseif #buffer < BINT_BYTES then -- add missing bytes to the right
+  elseif #buffer < BINT_BYTES then
     buffer = buffer..('\x00'):rep(BINT_BYTES - #buffer)
   end
   return setmetatable({BINT_LEPACKFMT:unpack(buffer)}, bint)
 end
 
---- Create a new bint from a buffer of big-endian bytes.
--- @param buffer Buffer of bytes, extra bytes are trimmed from the left, missing bytes are padded to the left.
--- @raise An assert is thrown in case buffer is not an string.
--- @return A bint.
 function bint.frombe(buffer)
   assert(type(buffer) == 'string', 'buffer is not a string')
-  if #buffer > BINT_BYTES then -- trim extra bytes from the left
+  if #buffer > BINT_BYTES then
     buffer = buffer:sub(-BINT_BYTES, #buffer)
-  elseif #buffer < BINT_BYTES then -- add missing bytes to the left
+  elseif #buffer < BINT_BYTES then
     buffer = ('\x00'):rep(BINT_BYTES - #buffer)..buffer
   end
   return setmetatable({BINT_LEPACKFMT:unpack(buffer:reverse())}, bint)
 end
 
---- Create a new bint from a value.
--- @param x A value convertible to a bint (string, number or another bint).
--- @return A new bint, guaranteed to be a new reference in case needed.
--- @raise An assert is thrown in case x is not convertible to a bint.
--- @see bint.tobint
--- @see bint.parse
 function bint.new(x)
   if getmetatable(x) ~= bint then
     local ty = type(x)
@@ -394,7 +241,6 @@ function bint.new(x)
     assert(x, 'value cannot be represented by a bint')
     return x
   end
-  -- return a clone
   local n = setmetatable({}, bint)
   for i=1,BINT_SIZE do
     n[i] = x[i]
@@ -403,19 +249,11 @@ function bint.new(x)
 end
 local bint_new = bint.new
 
---- Convert a value to a bint if possible.
--- @param x A value to be converted (string, number or another bint).
--- @param[opt] clone A boolean that tells if a new bint reference should be returned.
--- Defaults to false.
--- @return A bint or nil in case the conversion failed.
--- @see bint.new
--- @see bint.parse
 function bint.tobint(x, clone)
   if getmetatable(x) == bint then
     if not clone then
       return x
     end
-    -- return a clone
     local n = setmetatable({}, bint)
     for i=1,BINT_SIZE do
       n[i] = x[i]
@@ -431,14 +269,6 @@ function bint.tobint(x, clone)
 end
 local tobint = bint.tobint
 
---- Convert a value to a bint if possible otherwise to a lua number.
--- Useful to prepare values that you are unsure if it's going to be an integer or float.
--- @param x A value to be converted (string, number or another bint).
--- @param[opt] clone A boolean that tells if a new bint reference should be returned.
--- Defaults to false.
--- @return A bint or a lua number or nil in case the conversion failed.
--- @see bint.new
--- @see bint.tobint
 function bint.parse(x, clone)
   local i = tobint(x, clone)
   if i then
@@ -448,13 +278,6 @@ function bint.parse(x, clone)
 end
 local bint_parse = bint.parse
 
---- Convert a bint to an unsigned integer.
--- Note that large unsigned integers may be represented as negatives in lua integers.
--- Note that lua cannot represent values larger than 64 bits,
--- in that case integer values wrap around.
--- @param x A bint or a number to be converted into an unsigned integer.
--- @return An integer or nil in case the input cannot be represented by an integer.
--- @see bint.tointeger
 function bint.touinteger(x)
   if getmetatable(x) == bint then
     local n = 0
@@ -466,13 +289,6 @@ function bint.touinteger(x)
   return tointeger(x)
 end
 
---- Convert a bint to a signed integer.
--- It works by taking absolute values then applying the sign bit in case needed.
--- Note that lua cannot represent values larger than 64 bits,
--- in that case integer values wrap around.
--- @param x A bint or value to be converted into an unsigned integer.
--- @return An integer or nil in case the input cannot be represented by an integer.
--- @see bint.touinteger
 function bint.tointeger(x)
   if getmetatable(x) == bint then
     local n = 0
@@ -500,12 +316,6 @@ local function bint_assert_tointeger(x)
   return x
 end
 
---- Convert a bint to a lua float in case integer would wrap around or lua integer otherwise.
--- Different from @{bint.tointeger} the operation does not wrap around integers,
--- but digits precision are lost in the process of converting to a float.
--- @param x A bint or value to be converted into a lua number.
--- @return A lua number or nil in case the input cannot be represented by a number.
--- @see bint.tointeger
 function bint.tonumber(x)
   if getmetatable(x) == bint then
     if x <= BINT_MATHMAXINTEGER and x >= BINT_MATHMININTEGER then
@@ -517,7 +327,6 @@ function bint.tonumber(x)
 end
 local bint_tonumber = bint.tonumber
 
--- Compute base letters to use in bint.tobase
 local BASE_LETTERS = {}
 do
   for i=1,36 do
@@ -525,24 +334,13 @@ do
   end
 end
 
---- Convert a bint to a string in the desired base.
--- @param x The bint to be converted from.
--- @param[opt] base Base to be represented, defaults to 10.
--- Must be at least 2 and at most 36.
--- @param[opt] unsigned Whether to output as an unsigned integer.
--- Defaults to false for base 10 and true for others.
--- When unsigned is false the symbol '-' is prepended in negative values.
--- @return A string representing the input.
--- @raise An assert is thrown in case the base is invalid.
 function bint.tobase(x, base, unsigned)
   x = tobint(x)
   if not x then
-    -- x is a fractional float or something else
     return
   end
   base = base or 10
   if not (base >= 2 and base <= 36) then
-    -- number base is too large
     return
   end
   if unsigned == nil then
@@ -551,7 +349,6 @@ function bint.tobase(x, base, unsigned)
   local isxneg = x:isneg()
   if (base == 10 and not unsigned) or (base == 16 and unsigned and not isxneg) then
     if x <= BINT_MATHMAXINTEGER and x >= BINT_MATHMININTEGER then
-      -- integer is small, use tostring or string.format (faster)
       local n = x:tointeger()
       if base == 10 then
         return tostring(n)
@@ -567,7 +364,6 @@ function bint.tobase(x, base, unsigned)
   if xiszero then
     return '0'
   end
-  -- calculate basepow
   local step = 0
   local basepow = 1
   local limit = (BINT_WORDMSB - 1) // base
@@ -575,11 +371,9 @@ function bint.tobase(x, base, unsigned)
     step = step + 1
     basepow = basepow * base
   until basepow >= limit
-  -- serialize base digits
   local size = BINT_SIZE
   local xd, carry, d
   repeat
-    -- single word division
     carry = 0
     xiszero = true
     for i=size,1,-1 do
@@ -592,11 +386,9 @@ function bint.tobase(x, base, unsigned)
       x[i] = d
       carry = xd << BINT_WORDBITS
     end
-    -- digit division
     for _=1,step do
       xd, d = xd // base, xd % base
       if xiszero and xd == 0 and d == 0 then
-        -- stop on leading zeros
         break
       end
       table_insert(ss, 1, BASE_LETTERS[d])
@@ -612,11 +404,6 @@ local function bint_assert_convert(x)
   return assert(tobint(x), 'value has not integer representation')
 end
 
---- Convert a bint to a buffer of little-endian bytes.
--- @param x A bint or lua integer.
--- @param[opt] trim If true, zero bytes on the right are trimmed.
--- @return A buffer of bytes representing the input.
--- @raise Asserts in case input is not convertible to an integer.
 function bint.tole(x, trim)
   x = bint_assert_convert(x)
   local s = BINT_LEPACKFMT:pack(table_unpack(x))
@@ -629,11 +416,6 @@ function bint.tole(x, trim)
   return s
 end
 
---- Convert a bint to a buffer of big-endian bytes.
--- @param x A bint or lua integer.
--- @param[opt] trim If true, zero bytes on the left are trimmed.
--- @return A buffer of bytes representing the input.
--- @raise Asserts in case input is not convertible to an integer.
 function bint.tobe(x, trim)
   x = bint_assert_convert(x)
   local s = BINT_LEPACKFMT:pack(table_unpack(x)):reverse()
@@ -646,8 +428,6 @@ function bint.tobe(x, trim)
   return s
 end
 
---- Check if a number is 0 considering bints.
--- @param x A bint or a lua number.
 function bint.iszero(x)
   if getmetatable(x) == bint then
     for i=1,BINT_SIZE do
@@ -660,8 +440,6 @@ function bint.iszero(x)
   return x == 0
 end
 
---- Check if a number is 1 considering bints.
--- @param x A bint or a lua number.
 function bint.isone(x)
   if getmetatable(x) == bint then
     if x[1] ~= 1 then
@@ -677,8 +455,6 @@ function bint.isone(x)
   return x == 1
 end
 
---- Check if a number is -1 considering bints.
--- @param x A bint or a lua number.
 function bint.isminusone(x)
   if getmetatable(x) == bint then
     for i=1,BINT_SIZE do
@@ -692,28 +468,18 @@ function bint.isminusone(x)
 end
 local bint_isminusone = bint.isminusone
 
---- Check if the input is a bint.
--- @param x Any lua value.
 function bint.isbint(x)
   return getmetatable(x) == bint
 end
 
---- Check if the input is a lua integer or a bint.
--- @param x Any lua value.
 function bint.isintegral(x)
   return getmetatable(x) == bint or math_type(x) == 'integer'
 end
 
---- Check if the input is a bint or a lua number.
--- @param x Any lua value.
 function bint.isnumeric(x)
   return getmetatable(x) == bint or type(x) == 'number'
 end
 
---- Get the number type of the input (bint, integer or float).
--- @param x Any lua value.
--- @return Returns "bint" for bints, "integer" for lua integers,
--- "float" from lua floats or nil otherwise.
 function bint.type(x)
   if getmetatable(x) == bint then
     return 'bint'
@@ -721,9 +487,6 @@ function bint.type(x)
   return math_type(x)
 end
 
---- Check if a number is negative considering bints.
--- Zero is guaranteed to never be negative for bints.
--- @param x A bint or a lua number.
 function bint.isneg(x)
   if getmetatable(x) == bint then
     return x[BINT_SIZE] & BINT_WORDMSB ~= 0
@@ -732,8 +495,6 @@ function bint.isneg(x)
 end
 local bint_isneg = bint.isneg
 
---- Check if a number is positive considering bints.
--- @param x A bint or a lua number.
 function bint.ispos(x)
   if getmetatable(x) == bint then
     return not x:isneg() and not x:iszero()
@@ -741,8 +502,6 @@ function bint.ispos(x)
   return x > 0
 end
 
---- Check if a number is even considering bints.
--- @param x A bint or a lua number.
 function bint.iseven(x)
   if getmetatable(x) == bint then
     return x[1] & 1 == 0
@@ -750,8 +509,6 @@ function bint.iseven(x)
   return math_abs(x) % 2 == 0
 end
 
---- Check if a number is odd considering bints.
--- @param x A bint or a lua number.
 function bint.isodd(x)
   if getmetatable(x) == bint then
     return x[1] & 1 == 1
@@ -759,7 +516,6 @@ function bint.isodd(x)
   return math_abs(x) % 2 == 1
 end
 
---- Create a new bint with the maximum possible integer value.
 function bint.maxinteger()
   local x = setmetatable({}, bint)
   for i=1,BINT_SIZE-1 do
@@ -769,7 +525,6 @@ function bint.maxinteger()
   return x
 end
 
---- Create a new bint with the minimum possible integer value.
 function bint.mininteger()
   local x = setmetatable({}, bint)
   for i=1,BINT_SIZE-1 do
@@ -779,7 +534,6 @@ function bint.mininteger()
   return x
 end
 
---- Bitwise left shift a bint in one bit (in-place).
 function bint:_shlone()
   local wordbitsm1 = BINT_WORDBITS - 1
   for i=BINT_SIZE,2,-1 do
@@ -789,7 +543,6 @@ function bint:_shlone()
   return self
 end
 
---- Bitwise right shift a bint in one bit (in-place).
 function bint:_shrone()
   local wordbitsm1 = BINT_WORDBITS - 1
   for i=1,BINT_SIZE-1 do
@@ -799,7 +552,6 @@ function bint:_shrone()
   return self
 end
 
--- Bitwise left shift words of a bint (in-place). Used only internally.
 function bint:_shlwords(n)
   for i=BINT_SIZE,n+1,-1 do
     self[i] = self[i - n]
@@ -810,7 +562,6 @@ function bint:_shlwords(n)
   return self
 end
 
--- Bitwise right shift words of a bint (in-place). Used only internally.
 function bint:_shrwords(n)
   if n < BINT_SIZE then
     for i=1,BINT_SIZE-n do
@@ -827,7 +578,6 @@ function bint:_shrwords(n)
   return self
 end
 
---- Increment a bint by one (in-place).
 function bint:_inc()
   for i=1,BINT_SIZE do
     local tmp = self[i]
@@ -840,8 +590,6 @@ function bint:_inc()
   return self
 end
 
---- Increment a number by one considering bints.
--- @param x A bint or a lua number to increment.
 function bint.inc(x)
   local ix = tobint(x, true)
   if ix then
@@ -850,7 +598,6 @@ function bint.inc(x)
   return x + 1
 end
 
---- Decrement a bint by one (in-place).
 function bint:_dec()
   for i=1,BINT_SIZE do
     local tmp = self[i]
@@ -863,8 +610,6 @@ function bint:_dec()
   return self
 end
 
---- Decrement a number by one considering bints.
--- @param x A bint or a lua number to decrement.
 function bint.dec(x)
   local ix = tobint(x, true)
   if ix then
@@ -873,9 +618,6 @@ function bint.dec(x)
   return x - 1
 end
 
---- Assign a bint to a new value (in-place).
--- @param y A value to be copied from.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint:_assign(y)
   y = bint_assert_convert(y)
   for i=1,BINT_SIZE do
@@ -884,7 +626,6 @@ function bint:_assign(y)
   return self
 end
 
---- Take absolute of a bint (in-place).
 function bint:_abs()
   if self:isneg() then
     self:_unm()
@@ -892,8 +633,6 @@ function bint:_abs()
   return self
 end
 
---- Take absolute of a number considering bints.
--- @param x A bint or a lua number to take the absolute.
 function bint.abs(x)
   local ix = tobint(x, true)
   if ix then
@@ -903,8 +642,6 @@ function bint.abs(x)
 end
 local bint_abs = bint.abs
 
---- Take the floor of a number considering bints.
--- @param x A bint or a lua number to perform the floor operation.
 function bint.floor(x)
   if getmetatable(x) == bint then
     return bint_new(x)
@@ -912,8 +649,6 @@ function bint.floor(x)
   return bint_new(math_floor(tonumber(x)))
 end
 
---- Take ceil of a number considering bints.
--- @param x A bint or a lua number to perform the ceil operation.
 function bint.ceil(x)
   if getmetatable(x) == bint then
     return bint_new(x)
@@ -921,9 +656,6 @@ function bint.ceil(x)
   return bint_new(math_ceil(tonumber(x)))
 end
 
---- Wrap around bits of an integer (discarding left bits) considering bints.
--- @param x A bint or a lua integer.
--- @param y Number of right bits to preserve.
 function bint.bwrap(x, y)
   x = bint_assert_convert(x)
   if y <= 0 then
@@ -934,9 +666,6 @@ function bint.bwrap(x, y)
   return bint_new(x)
 end
 
---- Rotate left integer x by y bits considering bints.
--- @param x A bint or a lua integer.
--- @param y Number of bits to rotate.
 function bint.brol(x, y)
   x, y = bint_assert_convert(x), bint_assert_tointeger(y)
   if y > 0 then
@@ -952,9 +681,6 @@ function bint.brol(x, y)
   return x
 end
 
---- Rotate right integer x by y bits considering bints.
--- @param x A bint or a lua integer.
--- @param y Number of bits to rotate.
 function bint.bror(x, y)
   x, y = bint_assert_convert(x), bint_assert_tointeger(y)
   if y > 0 then
@@ -970,17 +696,12 @@ function bint.bror(x, y)
   return x
 end
 
---- Truncate a number to a bint.
--- Floats numbers are truncated, that is, the fractional port is discarded.
--- @param x A number to truncate.
--- @return A new bint or nil in case the input does not fit in a bint or is not a number.
 function bint.trunc(x)
   if getmetatable(x) ~= bint then
     x = tonumber(x)
     if x then
       local ty = math_type(x)
       if ty == 'float' then
-        -- truncate to integer
         x = math_modf(x)
       end
       return bint_frominteger(x)
@@ -990,10 +711,6 @@ function bint.trunc(x)
   return bint_new(x)
 end
 
---- Take maximum between two numbers considering bints.
--- @param x A bint or lua number to compare.
--- @param y A bint or lua number to compare.
--- @return A bint or a lua number. Guarantees to return a new bint for integer values.
 function bint.max(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1002,10 +719,6 @@ function bint.max(x, y)
   return bint_parse(math_max(x, y))
 end
 
---- Take minimum between two numbers considering bints.
--- @param x A bint or lua number to compare.
--- @param y A bint or lua number to compare.
--- @return A bint or a lua number. Guarantees to return a new bint for integer values.
 function bint.min(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1014,9 +727,6 @@ function bint.min(x, y)
   return bint_parse(math_min(x, y))
 end
 
---- Add an integer to a bint (in-place).
--- @param y An integer to be added.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint:_add(y)
   y = bint_assert_convert(y)
   local carry = 0
@@ -1028,9 +738,6 @@ function bint:_add(y)
   return self
 end
 
---- Add two numbers considering bints.
--- @param x A bint or a lua number to be added.
--- @param y A bint or a lua number to be added.
 function bint.__add(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1046,9 +753,6 @@ function bint.__add(x, y)
   return bint_tonumber(x) + bint_tonumber(y)
 end
 
---- Subtract an integer from a bint (in-place).
--- @param y An integer to subtract.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint:_sub(y)
   y = bint_assert_convert(y)
   local borrow = 0
@@ -1061,9 +765,6 @@ function bint:_sub(y)
   return self
 end
 
---- Subtract two numbers considering bints.
--- @param x A bint or a lua number to be subtracted from.
--- @param y A bint or a lua number to subtract.
 function bint.__sub(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1080,9 +781,6 @@ function bint.__sub(x, y)
   return bint_tonumber(x) - bint_tonumber(y)
 end
 
---- Multiply two numbers considering bints.
--- @param x A bint or a lua number to multiply.
--- @param y A bint or a lua number to multiply.
 function bint.__mul(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1115,9 +813,6 @@ function bint.__mul(x, y)
   return bint_tonumber(x) * bint_tonumber(y)
 end
 
---- Check if bints are equal.
--- @param x A bint to compare.
--- @param y A bint to compare.
 function bint.__eq(x, y)
   for i=1,BINT_SIZE do
     if x[i] ~= y[i] then
@@ -1127,9 +822,6 @@ function bint.__eq(x, y)
   return true
 end
 
---- Check if numbers are equal considering bints.
--- @param x A bint or lua number to compare.
--- @param y A bint or lua number to compare.
 function bint.eq(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1153,7 +845,6 @@ local function findleftbit(x)
   end
 end
 
--- Single word division modulus
 local function sudivmod(nume, deno)
   local rema
   local carry = 0
@@ -1166,19 +857,9 @@ local function sudivmod(nume, deno)
   return rema
 end
 
---- Perform unsigned division and modulo operation between two integers considering bints.
--- This is effectively the same of @{bint.udiv} and @{bint.umod}.
--- @param x The numerator, must be a bint or a lua integer.
--- @param y The denominator, must be a bint or a lua integer.
--- @return The quotient following the remainder, both bints.
--- @raise Asserts on attempt to divide by zero
--- or if inputs are not convertible to integers.
--- @see bint.udiv
--- @see bint.umod
 function bint.udivmod(x, y)
   local nume = bint_new(x)
   local deno = bint_assert_convert(y)
-  -- compute if high bits of denominator are all zeros
   local ishighzero = true
   for i=2,BINT_SIZE do
     if deno[i] ~= 0 then
@@ -1187,23 +868,18 @@ function bint.udivmod(x, y)
     end
   end
   if ishighzero then
-    -- try to divide by a single word (optimization)
     local low = deno[1]
     assert(low ~= 0, 'attempt to divide by zero')
     if low == 1 then
-      -- denominator is one
       return nume, bint_zero()
     elseif low <= (BINT_WORDMSB - 1) then
-      -- can do single word division
       local rema = sudivmod(nume, low)
       return nume, bint_fromuinteger(rema)
     end
   end
   if nume:ult(deno) then
-    -- denominator is greater than numerator
     return bint_zero(), nume
   end
-  -- align leftmost digits in numerator and denominator
   local denolbit = findleftbit(deno)
   local numelbit, numesize = findleftbit(nume)
   local bit = numelbit - denolbit
@@ -1522,11 +1198,6 @@ function bint.__shl(x, y)
   return x
 end
 
---- Bitwise right shift integers considering bints.
--- @param x An integer to perform the bitwise shift.
--- @param y An integer with the number of bits to shift.
--- @return The result of shift operation, a bint.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint.__shr(x, y)
   x, y = bint_new(x), bint_assert_tointeger(y)
   if y == math_mininteger or math_abs(y) >= BINT_BITS then
@@ -1599,10 +1270,6 @@ function bint:_bxor(y)
   return self
 end
 
---- Bitwise XOR two integers considering bints.
--- @param x An integer to perform bitwise XOR.
--- @param y An integer to perform bitwise XOR.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint.__bxor(x, y)
   return bint_new(x):_bxor(y)
 end
@@ -1615,9 +1282,6 @@ function bint:_bnot()
   return self
 end
 
---- Bitwise NOT a bint.
--- @param x An integer to perform bitwise NOT.
--- @raise Asserts in case inputs are not convertible to integers.
 function bint.__bnot(x)
   local y = setmetatable({}, bint)
   for i=1,BINT_SIZE do
@@ -1626,22 +1290,14 @@ function bint.__bnot(x)
   return y
 end
 
---- Negate a bint (in-place). This effectively applies two's complements.
 function bint:_unm()
   return self:_bnot():_inc()
 end
 
---- Negate a bint. This effectively applies two's complements.
--- @param x A bint to perform negation.
 function bint.__unm(x)
   return (~x):_inc()
 end
 
---- Compare if integer x is less than y considering bints (unsigned version).
--- @param x Left integer to compare.
--- @param y Right integer to compare.
--- @raise Asserts in case inputs are not convertible to integers.
--- @see bint.__lt
 function bint.ult(x, y)
   x, y = bint_assert_convert(x), bint_assert_convert(y)
   for i=BINT_SIZE,1,-1 do
@@ -1653,11 +1309,6 @@ function bint.ult(x, y)
   return false
 end
 
---- Compare if bint x is less or equal than y considering bints (unsigned version).
--- @param x Left integer to compare.
--- @param y Right integer to compare.
--- @raise Asserts in case inputs are not convertible to integers.
--- @see bint.__le
 function bint.ule(x, y)
   x, y = bint_assert_convert(x), bint_assert_convert(y)
   for i=BINT_SIZE,1,-1 do
@@ -1669,10 +1320,6 @@ function bint.ule(x, y)
   return true
 end
 
---- Compare if number x is less than y considering bints and signs.
--- @param x Left value to compare, a bint or lua number.
--- @param y Right value to compare, a bint or lua number.
--- @see bint.ult
 function bint.__lt(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1692,10 +1339,6 @@ function bint.__lt(x, y)
   return bint_tonumber(x) < bint_tonumber(y)
 end
 
---- Compare if number x is less or equal than y considering bints and signs.
--- @param x Left value to compare, a bint or lua number.
--- @param y Right value to compare, a bint or lua number.
--- @see bint.ule
 function bint.__le(x, y)
   local ix, iy = tobint(x), tobint(y)
   if ix and iy then
@@ -1715,13 +1358,10 @@ function bint.__le(x, y)
   return bint_tonumber(x) <= bint_tonumber(y)
 end
 
---- Convert a bint to a string on base 10.
--- @see bint.tobase
 function bint:__tostring()
   return self:tobase(10)
 end
 
--- Allow creating bints by calling bint itself
 setmetatable(bint, {
   __call = function(_, x)
     return bint_new(x)
